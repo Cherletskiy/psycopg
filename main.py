@@ -1,8 +1,17 @@
 import psycopg2
 import logging
+from logging.handlers import RotatingFileHandler
 
 
-logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(levelname)s - %(message)s",
+    handlers=[
+        RotatingFileHandler("app.log", maxBytes=1024*1024, backupCount=50, encoding="utf-8", delay=True),
+        logging.StreamHandler()
+    ]
+)
+
 
 conn = psycopg2.connect(
     database="python_db2",
