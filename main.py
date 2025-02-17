@@ -13,13 +13,6 @@ logging.basicConfig(
 )
 
 
-conn = psycopg2.connect(
-    database="python_db2",
-    user="postgres",
-    password="postgres"
-)
-
-
 def create_db(cursor) -> None:
     """Функция, создающая структуру БД (таблицы)."""
     cursor.execute("""
@@ -53,13 +46,33 @@ def add_phone(cursor, number, user_id) -> None:
     logging.info(f"Добавлен новый телефон: {cursor.fetchall()}")
 
 
-def edit_user(cursor, user_id, first_name, last_name, email) -> None:
+def edit_user(cursor, user_id, first_name=None, last_name=None, email=None) -> None:
     """Функция, позволяющая изменить данные о клиенте."""
-    cursor.execute("""
+    fields_list = []
+    values_list = []
+
+    if first_name:
+        fields_list.append(f"first_name = %s")
+        values_list.append(first_name)
+    if last_name:
+        fields_list.append(f"last_name = %s")
+        values_list.append(last_name)
+    if email:
+        fields_list.append(f"email = %s")
+        values_list.append(email)
+
+    if not fields_list:
+        logging.warning("Нет полей для обновления.")
+        return
+
+    values_list.append(user_id)
+
+    cursor.execute(f"""
         UPDATE users
-        SET first_name = %s, last_name = %s, email = %s
-        WHERE id = %s RETURNING *;""", (first_name, last_name, email, user_id))
-    logging.info(f"Пользователь изменен: {cursor.fetchall()}")
+        SET {", ".join(fields_list)}
+        WHERE id = %s RETURNING *;""", tuple(values_list))
+
+    logging.info(f"Пользователь обновлен: {cursor.fetchall()}")
 
 
 def delete_phone(cursor, user_id) -> None:
@@ -78,40 +91,40 @@ def delete_user(cursor, user_id) -> None:
     logging.info(f"Пользователь удален: {cursor.fetchall()}")
 
 
-def find_user_by_id(cursor, user_id) -> None:
-    """Функция, позволяющая найти пользователя по его id."""
-    cursor.execute("""
-        SELECT * FROM users
-        WHERE id = %s;""", (user_id,))
+def find_user(cursor, first_name=None, last_name=None, email=None, number=None) -> None:
+    """Функция, позволяющая найти клиента по его данным: имени, фамилии, email или телефону."""
+    fields_list = []
+    values_list = []
+
+    if first_name:
+        fields_list.append(f"first_name = %s")
+        values_list.append(first_name)
+    if last_name:
+        fields_list.append(f"last_name = %s")
+        values_list.append(last_name)
+    if email:
+        fields_list.append(f"email = %s")
+        values_list.append(email)
+    if number:
+        result = find_user_by_phone(cursor, number)
+        if result:
+            fields_list.append(f"id = %s")
+            values_list.append(result[2])
+
+    if not fields_list:
+        logging.warning("Не передана информация для поиска")
+        return
+
+    cursor.execute(f"""
+            SELECT * FROM users
+            WHERE {" AND ".join(fields_list)};""", tuple(values_list))
+
     result = cursor.fetchall()
+
     if result:
         logging.info(f"Пользователь найден: {result}")
     else:
-        logging.warning(f"Пользователь с id {user_id} не найден.")
-
-
-def find_user_by_name(cursor, first_name, last_name) -> None:
-    """Функция, позволяющая найти пользователя по его имени."""
-    cursor.execute("""
-        SELECT * FROM users
-        WHERE first_name = %s AND last_name = %s;""", (first_name, last_name))
-    result = cursor.fetchall()
-    if result:
-        logging.info(f"Пользователь найден: {result}")
-    else:
-        logging.warning(f"Пользователь с именем {first_name} {last_name} не найден.")
-
-
-def find_user_by_email(cursor, email) -> None:
-    """Функция, позволяющая найти пользователя по его email."""
-    cursor.execute("""
-        SELECT * FROM users
-        WHERE email = %s;""", (email,))
-    result = cursor.fetchall()
-    if result:
-        logging.info(f"Пользователь найден: {result}")
-    else:
-        logging.warning(f"Пользователь с email {email} не найден.")
+        logging.warning(f"Не найден пользователь по данным {values_list}")
 
 
 def find_user_by_phone(cursor, number) -> None:
@@ -119,11 +132,8 @@ def find_user_by_phone(cursor, number) -> None:
     cursor.execute("""
         SELECT * FROM phones
         WHERE number = %s;""", (number,))
-    result = cursor.fetchall()
-    if result:
-        logging.info(f"Пользователь найден: {result}")
-    else:
-        logging.warning(f"Пользователь с номером {number} не найден.")
+    result = cursor.fetchone()
+    return result
 
 
 def select_all_users(cursor) -> None:
@@ -134,55 +144,56 @@ def select_all_users(cursor) -> None:
     logging.info("Все пользователи: " + str(users))
 
 
-def main():
-    with conn.cursor() as cursor:
-        # Удаление таблиц
-        cursor.execute("""
-                DROP TABLE IF EXISTS phones;
-                DROP TABLE IF EXISTS users;
-            """)
-        logging.info("Удалены таблицы phones и users (если они существовали).")
+with psycopg2.connect(database="python_db2", user="postgres", password="postgres") as conn:
+    def main():
+        with conn.cursor() as cursor:
+            # Удаление таблиц
+            cursor.execute("""
+                    DROP TABLE IF EXISTS phones;
+                    DROP TABLE IF EXISTS users;
+                """)
+            logging.info("Удалены таблицы phones и users (если они существовали).")
 
-        # Создание таблиц
-        create_db(cursor)
+            # Создание таблиц
+            create_db(cursor)
 
-        # Добавление пользователей
-        add_user(cursor, 'Ivan', 'Ivanov', 'ivan@example.com')
-        add_user(cursor, 'Petr', 'Petrov', 'petr@example.com')
-        add_user(cursor, 'Anna', 'Sidorova', 'anna@example.com')
+            # Добавление пользователей
+            add_user(cursor, 'Ivan', 'Ivanov', 'ivan@example.com')
+            add_user(cursor, 'Petr', 'Petrov', 'petr@example.com')
+            add_user(cursor, 'Anna', 'Sidorova', 'anna@example.com')
 
-        # Добавление телефонов
-        add_phone(cursor, '1234567890', 1)
-        add_phone(cursor, '9876543210', 1)
-        add_phone(cursor, '1112233445', 2)
+            # Добавление телефонов
+            add_phone(cursor, '1234567890', 1)
+            add_phone(cursor, '9876543210', 1)
+            add_phone(cursor, '1112233445', 2)
 
-        # Изменение пользователя
-        edit_user(cursor, 2, 'Petr', 'Petrovich', 'petr.petrovich@example.com')
+            # Изменение пользователя
+            edit_user(cursor, 1, first_name="Ivan_1")
+            edit_user(cursor, 1, last_name="Ivanov_1")
+            edit_user(cursor, 1, email="new_ivan@example.com")
+            edit_user(cursor, 2, first_name="Petr_1", last_name="Petrov_2", email="new_petr@example.com")
 
-        # Удаление телефона
-        delete_phone(cursor, 2)
+            # Удаление телефона
+            delete_phone(cursor, 3)
 
-        # Поиск пользователей
-        find_user_by_id(cursor, 1)
-        find_user_by_name(cursor, 'Anna', 'Sidorova')
-        find_user_by_email(cursor, 'ivan@example.com')
-        find_user_by_phone(cursor, '1234567890')
+            # Поиск пользователей
+            find_user(cursor, first_name="Ivan")
+            find_user(cursor, last_name="Ivanov")
+            find_user(cursor, email="ivan@example.com")
+            find_user(cursor, number="1234567890")
+            find_user(cursor, first_name="Ivan", last_name="Ivanov", email="ivan@example.com", number="1234567890")
 
-        # Вывод всех пользователей
-        select_all_users(cursor)
+            # Вывод всех пользователей
+            select_all_users(cursor)
 
-        # Удаление пользователя
-        delete_user(cursor, 3)
+            # Удаление пользователя
+            delete_user(cursor, 3)
 
-        # Повторный вывод всех пользователей после удаления
-        select_all_users(cursor)
-
-        # Фиксация изменений
-        conn.commit()
+            # Повторный вывод всех пользователей после удаления
+            select_all_users(cursor)
 
 
-# Запуск проверки функций
-main()
+    # Запуск проверки функций
+    main()
 
-conn.close()
 logging.info("Соединение с базой данных закрыто.")
