@@ -48,29 +48,26 @@ def add_phone(cursor, number, user_id) -> None:
 
 def edit_user(cursor, user_id, first_name=None, last_name=None, email=None) -> None:
     """Функция, позволяющая изменить данные о клиенте."""
-    fields_list = []
-    values_list = []
 
-    if first_name:
-        fields_list.append(f"first_name = %s")
-        values_list.append(first_name)
-    if last_name:
-        fields_list.append(f"last_name = %s")
-        values_list.append(last_name)
-    if email:
-        fields_list.append(f"email = %s")
-        values_list.append(email)
+    updates = [
+        ("first_name", first_name),
+        ("last_name", last_name),
+        ("email", email)
+    ]
 
-    if not fields_list:
-        logging.warning("Нет полей для обновления.")
+    fields = [f"{field} = %s" for field, value in updates if value is not None]
+    values = [value for field, value in updates if value is not None]
+
+    if not fields:
+        logging.warning("Не переданы данные для обновления пользователя.")
         return
 
-    values_list.append(user_id)
+    values.append(user_id)
 
     cursor.execute(f"""
         UPDATE users
-        SET {", ".join(fields_list)}
-        WHERE id = %s RETURNING *;""", tuple(values_list))
+        SET {", ".join(fields)}
+        WHERE id = %s RETURNING *;""", tuple(values))
 
     logging.info(f"Пользователь обновлен: {cursor.fetchall()}")
 
@@ -93,38 +90,35 @@ def delete_user(cursor, user_id) -> None:
 
 def find_user(cursor, first_name=None, last_name=None, email=None, number=None) -> None:
     """Функция, позволяющая найти клиента по его данным: имени, фамилии, email или телефону."""
-    fields_list = []
-    values_list = []
+    search_params = [
+        ("first_name", first_name),
+        ("last_name", last_name),
+        ("email", email)
+    ]
 
-    if first_name:
-        fields_list.append(f"first_name = %s")
-        values_list.append(first_name)
-    if last_name:
-        fields_list.append(f"last_name = %s")
-        values_list.append(last_name)
-    if email:
-        fields_list.append(f"email = %s")
-        values_list.append(email)
+    fields = [f"{field} = %s" for field, value in search_params if value is not None]
+    values = [value for field, value in search_params if value is not None]
+
     if number:
         result = find_user_by_phone(cursor, number)
         if result:
-            fields_list.append(f"id = %s")
-            values_list.append(result[2])
+            fields.append("id = %s")
+            values.append(result[2])  # Используем ID из результата поиска по телефону
 
-    if not fields_list:
-        logging.warning("Не передана информация для поиска")
+    if not fields:
+        logging.warning("Не передана информация для поиска.")
         return
 
     cursor.execute(f"""
             SELECT * FROM users
-            WHERE {" AND ".join(fields_list)};""", tuple(values_list))
+            WHERE {" AND ".join(fields)};""", tuple(values))
 
     result = cursor.fetchall()
 
     if result:
         logging.info(f"Пользователь найден: {result}")
     else:
-        logging.warning(f"Не найден пользователь по данным {values_list}")
+        logging.warning(f"Не найден пользователь по данным {values}")
 
 
 def find_user_by_phone(cursor, number) -> None:
@@ -177,11 +171,11 @@ with psycopg2.connect(database="python_db2", user="postgres", password="postgres
             delete_phone(cursor, 3)
 
             # Поиск пользователей
-            find_user(cursor, first_name="Ivan")
+            find_user(cursor, first_name="Ivan_1")
             find_user(cursor, last_name="Ivanov")
             find_user(cursor, email="ivan@example.com")
             find_user(cursor, number="1234567890")
-            find_user(cursor, first_name="Ivan", last_name="Ivanov", email="ivan@example.com", number="1234567890")
+            find_user(cursor, first_name="Ivan_1", last_name="Ivanov_1", email="new_ivan@example.com", number="1234567890")
 
             # Вывод всех пользователей
             select_all_users(cursor)
